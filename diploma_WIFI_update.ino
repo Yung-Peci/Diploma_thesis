@@ -45,7 +45,8 @@ enum State {
   HOME,
   SETTINGS,
   CHANGE_PASSWORD,
-  DIAGNOSE
+  DIAGNOSE,
+  NEW_PASSWORD
 };
 
 State currentState = HOME;
@@ -97,17 +98,14 @@ void loop() {
   else if (customKey == 'B'  && currentState == TRIGGERED || customKey == 'B' && currentState == ARMED){
     currentState = DISARMED;
   }
-  else if (customKey == 'B' && currentState == SETTINGS){
-    currentState = HOME;
-  }
-  else if (customKey == 'C' && currentState != TRIGGERED && currentState != ARMED){
+  else if (customKey == 'C' && currentState == HOME){
     currentState = SETTINGS;
   }
 
   switch (currentState) {
     case ENTERING_PASSWORD:
       if (customKey){
-        attemptActivate(customKey);
+        passwordMode("Attempt activate", customKey);
       }
       break;
     case DISARMED:
@@ -124,6 +122,12 @@ void loop() {
       break;
     case SETTINGS:
       settingsMenu(customKey);
+      break;
+    case CHANGE_PASSWORD:
+      passwordMode("Reset password", customKey);
+      break;
+    case NEW_PASSWORD:
+      passwordMode("New password", customKey);
   }
 }
 
@@ -152,6 +156,10 @@ void settingsMenu(char customKey){
   else if (customKey == '#' && cursor_position == 1){
     currentState = DIAGNOSE;
   }
+  else if (customKey == 'B'){
+    currentState = HOME;
+    cursor_position = 0;
+  }
     
   lcd.setCursor(0,cursor_position);
   lcd.print(cursor);
@@ -163,46 +171,59 @@ void settingsMenu(char customKey){
 
 
 
-void homeScreen(){
-  if (lcdState != "home"){
-    lcd.clear();
-    lcd.setCursor(0,0);
-    lcd.print("Home screen");
-    lcdState = "home";
-  }
-  printLocalTime();
-}
-
-
-
-void attemptActivate(char customKey) {  
+// zamenqm attemptActivate i changePassword s universalna funkciq s argumenti
+void passwordMode(String mode, char customKey){
   if (lcdState != "Enter password"){
     lcd.clear();
     lcd.setCursor(0, 0);
-    lcd.print("Enter password:");
+    if (mode == "Reset password"){
+      lcd.print("Old password:");
+    }
+    else if (mode == "New password"){
+      lcd.print("New password:");
+    }
+    else if (mode == "Attempt activate"){
+      lcd.print("Enter password:");
+    }
     lcdState = "Enter password";
   }
-  
-	
+
   if(customKey == '*'){
     lcd.setCursor(password.length()-1,1);
     lcd.print(" ");
     password.remove(password.length() - 1);
     
   }
+
   else if(customKey == '#' && password.length() == 6){
     lcd.clear();
     lcd.setCursor(0,0);
-    if(password == current_password){
+    if(password == current_password && mode == "Reset password"){
+      password = "";
+      lcdState = "";
+      currentState = NEW_PASSWORD;
+    }
+    else if (password != current_password && mode == "Reset password"){
+      lcd.print("Access denied!");
+      delay(1500);
+      currentState = SETTINGS;
+    }
+    else if(password == current_password && mode == "Attempt activate"){
       lcd.print("Access granted!");
       delay(2000);
       turnOnSensor();
       currentState = ARMED;
     }
-    else{
+    else if (password != current_password && mode == "Attempt activate"){
       lcd.print("Access denied!");
-      delay(2000);
+      delay(1500);
       currentState = HOME;
+    }
+    else if (mode == "New password"){
+      lcd.print("Password changed");
+      current_password = password;
+      delay(1500);
+      currentState = SETTINGS;
     }
     
     password = "";
@@ -221,9 +242,26 @@ void attemptActivate(char customKey) {
   else if (customKey == 'B'){
     password = "";
     lcdState = "";
-    currentState = HOME;
+    if (mode == "Attempt activate"){
+      currentState = HOME;
+    }
+    else {
+      currentState = SETTINGS;
+    }
     return;
   }
+}
+
+
+
+void homeScreen(){
+  if (lcdState != "home"){
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("Home screen");
+    lcdState = "home";
+  }
+  printLocalTime();
 }
 
 
