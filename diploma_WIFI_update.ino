@@ -10,6 +10,7 @@ const byte sensor = 34;
 const byte piezo = 26;
 const int green_indicator = 32;
 const int red_indicator = 33;
+int sensor_threshold = 700;
 
 unsigned long previousMillis = 0;
 const long interval = 150;
@@ -53,14 +54,15 @@ State currentState = HOME;
 
 
 
-const char* ssid = "Kalina Net";
-const char* passwordd = "kalina0911";
+const char* ssid = "iPhone";
+const char* passwordd = "12345467";
 
 const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 7200;        // Change for your timezone
-const int   daylightOffset_sec = 3600;   // Usually 3600 if DST active
+const long  gmtOffset_sec = 7200;
+const int   daylightOffset_sec = 3600;
+bool wifiConnected = false;
 
-void connectToWiFi();
+bool connectToWiFi();
 void setupTime();
 void printLocalTime();
 
@@ -80,8 +82,10 @@ void setup() {
   lcd.print("Welcome!");
   lcd.setCursor(0,1);
   lcd.print("Loading...");
-  connectToWiFi();
-  setupTime();
+  wifiConnected = connectToWiFi();
+  if (wifiConnected) {
+    setupTime();
+  }
   delay(1500);
   lcd.clear();
 }
@@ -128,6 +132,41 @@ void loop() {
       break;
     case NEW_PASSWORD:
       passwordMode("New password", customKey);
+    case DIAGNOSE:
+      diagnose(customKey);
+  }
+}
+
+
+
+void diagnose(char customKey) {
+  if(lcdState != "diagnose"){
+    lcd.clear();
+    lcdState = "diagnose";
+  }
+
+  digitalWrite(laser, HIGH);
+  int current_value = analogRead(sensor);
+
+  lcd.setCursor(0, 0);
+  lcd.print("Sensor:");
+  lcd.setCursor(7, 0);
+  lcd.print(current_value);
+  if (current_value < 1000){
+    lcd.setCursor(11,0);
+    lcd.print(" ");
+  }
+
+  lcd.setCursor(0, 1);
+  lcd.print(current_value < sensor_threshold ? "Beam:BRKN" : "Beam:OK  ");
+
+  lcd.setCursor(12,1);
+  lcd.print(sensor_threshold);
+
+  if (customKey == 'B') {
+    digitalWrite(laser, LOW);
+    lcdState = "";
+    currentState = SETTINGS;
   }
 }
 
@@ -188,7 +227,7 @@ void passwordMode(String mode, char customKey){
     lcdState = "Enter password";
   }
 
-  if(customKey == '*'){
+  if(customKey == '*' && password.length() > 0){
     lcd.setCursor(password.length()-1,1);
     lcd.print(" ");
     password.remove(password.length() - 1);
@@ -261,7 +300,9 @@ void homeScreen(){
     lcd.print("Home screen");
     lcdState = "home";
   }
-  printLocalTime();
+  if (wifiConnected) {
+    printLocalTime();
+  }
 }
 
 
@@ -296,7 +337,7 @@ void turnOnSensor() {
 void monitorSensor(){
   int sensorValue = analogRead(sensor);
   
-  if (sensorValue < 600){
+  if (sensorValue < sensor_threshold){
     currentState = TRIGGERED;
   }
   else {
@@ -364,17 +405,27 @@ void alarm(int pin) {
 
 
 
-void connectToWiFi() {
+bool connectToWiFi() {
   WiFi.begin(ssid, passwordd);
   Serial.print("Connecting to WiFi");
 
-  while (WiFi.status() != WL_CONNECTED) {
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
     delay(500);
     Serial.print(".");
+    attempts++;
   }
 
-  Serial.println("\nConnected!");
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nConnected!");
+    return true;
+  } else {
+    Serial.println("\nWiFi failed.");
+    return false;
+  }
 }
+
+
 
 void setupTime() {
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
