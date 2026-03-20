@@ -1,7 +1,12 @@
 #include <Keypad.h>
 #include <LiquidCrystal_I2C.h>
 #include <WiFi.h>
+#include <NetworkClientSecure.h>
+#include <UniversalTelegramBot.h>
+#include <ArduinoJson.h>
 #include <time.h>
+
+
 
 const byte rows = 4;
 const byte columns = 4;
@@ -62,9 +67,17 @@ const long  gmtOffset_sec = 7200;
 const int   daylightOffset_sec = 3600;
 bool wifiConnected = false;
 
+String botToken = "8682510893:AAFZoKi9DDRGq7RazZ9x5kppnzYV1juzAx8";
+String chatId = "7867814046";
+bool alertSent = false;
+
+NetworkClientSecure secureClient;
+UniversalTelegramBot bot(botToken, secureClient);
+
 bool connectToWiFi();
 void setupTime();
 void printLocalTime();
+void sendTelegramAlert();
 
 
 
@@ -85,6 +98,7 @@ void setup() {
   wifiConnected = connectToWiFi();
   if (wifiConnected) {
     setupTime();
+    secureClient.setInsecure();
   }
   delay(1500);
   lcd.clear();
@@ -132,8 +146,10 @@ void loop() {
       break;
     case NEW_PASSWORD:
       passwordMode("New password", customKey);
+      break;
     case DIAGNOSE:
       diagnose(customKey);
+      break;
   }
 }
 
@@ -210,7 +226,6 @@ void settingsMenu(char customKey){
 
 
 
-// zamenqm attemptActivate i changePassword s universalna funkciq s argumenti
 void passwordMode(String mode, char customKey){
   if (lcdState != "Enter password"){
     lcd.clear();
@@ -338,6 +353,7 @@ void monitorSensor(){
   int sensorValue = analogRead(sensor);
   
   if (sensorValue < sensor_threshold){
+    alertSent = false;
     currentState = TRIGGERED;
   }
   else {
@@ -354,6 +370,7 @@ void turnOffSensor() {
       lcd.print("DISARMED!");
       lcdState = "disarmed";
   }
+  alertSent = false;
   currentState = HOME;
   noTone(piezo);
   digitalWrite(laser, LOW);
@@ -383,6 +400,11 @@ void alarm(int pin) {
 
   digitalWrite(green_indicator, LOW);
 
+  if (!alertSent && wifiConnected) {
+    sendTelegramAlert();
+    alertSent = true;
+  }
+
   if (currentMillis - previousMillis >= interval){
     previousMillis = currentMillis;
 
@@ -401,6 +423,26 @@ void alarm(int pin) {
       lcd.clear();
     }
   }
+}
+
+
+
+void telegramTask(void *parameter) {
+  struct tm timeinfo;
+  String message = "🚨 *INTRUDER ALERT*\n\nIntrusion detected!";
+
+  if (getLocalTime(&timeinfo)) {
+    char timeStr[20];
+    strftime(timeStr, sizeof(timeStr), "%H:%M:%S", &timeinfo);
+    message += "\nTime: " + String(timeStr);
+  }
+
+  bot.sendMessage(chatId, message, "Markdown");
+  vTaskDelete(NULL);
+}
+
+void sendTelegramAlert() {
+  xTaskCreatePinnedToCore(telegramTask, "TelegramTask", 8192, NULL, 1, NULL, 0);
 }
 
 
